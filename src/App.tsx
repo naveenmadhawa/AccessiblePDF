@@ -3,8 +3,6 @@ import { Dropzone } from './components/Dropzone';
 import { pdfToImages } from './utils/pdfProcessor';
 import { convertPdfPageToHtml } from './services/gemini';
 import parse from 'html-react-parser';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
 import { 
   FileText, 
   Code, 
@@ -147,31 +145,61 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const downloadPdf = () => {
-    if (!previewRef.current) return;
+  const downloadPdf = async () => {
+    if (!generatedHtml) return;
     
-    // We need to temporarily ensure the preview is visible for html2pdf to capture it properly
-    const wasCodeTab = activeTab === 'code';
-    if (wasCodeTab) {
-      setActiveTab('preview');
-    }
+    setIsProcessing(true);
+    try {
+      const fullHtml = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Accessible Document - ${file?.name}</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; padding: 2rem; max-width: 800px; margin: 0 auto; }
+            section { margin-bottom: 4rem; border-bottom: 1px solid #eee; padding-bottom: 2rem; }
+            img { max-width: 100%; height: auto; }
+          </style>
+        </head>
+        <body>
+          <main>
+            ${generatedHtml}
+          </main>
+        </body>
+        </html>
+      `;
 
-    setTimeout(() => {
-      const element = previewRef.current;
-      const opt = {
-        margin:       10,
-        filename:     `${file?.name?.replace('.pdf', '')}_accessible.pdf`,
-        image:        { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
-        jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
-      };
-
-      html2pdf().set(opt).from(element).save().then(() => {
-        if (wasCodeTab) {
-          setActiveTab('code');
-        }
+      const response = await fetch('/api/pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          html: fullHtml,
+          filename: `${file?.name?.replace('.pdf', '')}_accessible.pdf`
+        }),
       });
-    }, 100);
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${file?.name?.replace('.pdf', '')}_accessible.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to generate PDF', err);
+      setError('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
