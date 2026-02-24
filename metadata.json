@@ -1,0 +1,5 @@
+{
+  "name": "AccessiblePDF Transformer",
+  "description": "Convert PDFs into ADA-compliant, accessible HTML using Gemini AI multimodal vision.",
+  "requestFramePermissions": []
+}
