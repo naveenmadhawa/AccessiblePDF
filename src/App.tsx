@@ -3,6 +3,8 @@ import { Dropzone } from './components/Dropzone';
 import { pdfToImages } from './utils/pdfProcessor';
 import { convertPdfPageToHtml } from './services/gemini';
 import parse from 'html-react-parser';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 import { 
   FileText, 
   Code, 
@@ -146,60 +148,30 @@ export default function App() {
   };
 
   const downloadPdf = () => {
-    // For an "AccessiblePDF" app, generating an image-based PDF using html2pdf.js 
-    // defeats the purpose because it removes all text and semantics.
-    // Instead, we create a hidden iframe with the HTML and use the browser's native print,
-    // which allows saving as a true, accessible PDF with selectable text and semantics.
+    if (!previewRef.current) return;
     
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
+    // We need to temporarily ensure the preview is visible for html2pdf to capture it properly
+    const wasCodeTab = activeTab === 'code';
+    if (wasCodeTab) {
+      setActiveTab('preview');
+    }
 
-    const doc = iframe.contentWindow?.document;
-    if (!doc) return;
+    setTimeout(() => {
+      const element = previewRef.current;
+      const opt = {
+        margin:       10,
+        filename:     `${file?.name?.replace('.pdf', '')}_accessible.pdf`,
+        image:        { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+      };
 
-    doc.open();
-    doc.write(`
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Accessible Document - ${file?.name}</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-          body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; padding: 2rem; max-width: 800px; margin: 0 auto; }
-          section { margin-bottom: 4rem; border-bottom: 1px solid #eee; padding-bottom: 2rem; }
-          img { max-width: 100%; height: auto; }
-          @media print {
-            body { padding: 0; }
-            section { page-break-inside: avoid; }
-          }
-        </style>
-      </head>
-      <body>
-        <main>
-          ${generatedHtml}
-        </main>
-      </body>
-      </html>
-    `);
-    doc.close();
-
-    iframe.onload = () => {
-      setTimeout(() => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      }, 500);
-    };
+      html2pdf().set(opt).from(element).save().then(() => {
+        if (wasCodeTab) {
+          setActiveTab('code');
+        }
+      });
+    }, 100);
   };
 
   return (
