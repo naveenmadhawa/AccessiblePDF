@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dropzone } from './components/Dropzone';
 import { pdfToImages } from './utils/pdfProcessor';
 import { convertPdfPageToHtml } from './services/gemini';
@@ -12,7 +12,8 @@ import {
   Loader2, 
   Accessibility,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  FileDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -23,6 +24,7 @@ export default function App() {
   const [generatedHtml, setGeneratedHtml] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const [error, setError] = useState<string | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
@@ -141,6 +143,63 @@ export default function App() {
     a.download = `${file?.name?.replace('.pdf', '')}_accessible.html`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadPdf = () => {
+    // For an "AccessiblePDF" app, generating an image-based PDF using html2pdf.js 
+    // defeats the purpose because it removes all text and semantics.
+    // Instead, we create a hidden iframe with the HTML and use the browser's native print,
+    // which allows saving as a true, accessible PDF with selectable text and semantics.
+    
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Accessible Document - ${file?.name}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+          body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; padding: 2rem; max-width: 800px; margin: 0 auto; }
+          section { margin-bottom: 4rem; border-bottom: 1px solid #eee; padding-bottom: 2rem; }
+          img { max-width: 100%; height: auto; }
+          @media print {
+            body { padding: 0; }
+            section { page-break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+        <main>
+          ${generatedHtml}
+        </main>
+      </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.onload = () => {
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1000);
+      }, 500);
+    };
   };
 
   return (
@@ -276,19 +335,28 @@ export default function App() {
                         Code
                       </button>
                     </div>
-                    <button
-                      onClick={downloadHtml}
-                      className="px-4 py-1.5 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition-colors flex items-center gap-2"
-                    >
-                      <Download className="w-4 h-4" />
-                      Download HTML
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={downloadHtml}
+                        className="px-4 py-1.5 bg-zinc-100 text-zinc-700 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors flex items-center gap-2"
+                      >
+                        <Code className="w-4 h-4" />
+                        HTML
+                      </button>
+                      <button
+                        onClick={downloadPdf}
+                        className="px-4 py-1.5 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                      >
+                        <FileDown className="w-4 h-4" />
+                        PDF
+                      </button>
+                    </div>
                   </div>
 
                   {/* Content Area */}
                   <div className="flex-1 overflow-auto p-8 bg-white">
                     {activeTab === 'preview' ? (
-                      <div className="prose prose-zinc max-w-none prose-headings:font-bold prose-a:text-zinc-900 prose-img:rounded-xl">
+                      <div ref={previewRef} className="prose prose-zinc max-w-none prose-headings:font-bold prose-a:text-zinc-900 prose-img:rounded-xl">
                         {parse(generatedHtml)}
                       </div>
                     ) : (
